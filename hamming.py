@@ -209,7 +209,7 @@ def bytes_to_bits(byte_stream: bytearray, nzfill=BITS_PER_BYTE):
     out = bitarray()
     for byte_idx in range(len(byte_stream)):
         byte = byte_stream[byte_idx]
-        fill = nzfill % BITS_PER_BYTE if byte_idx == 0 else BITS_PER_BYTE
+        fill = nzfill % BITS_PER_BYTE if (byte_idx == 0 and nzfill % BITS_PER_BYTE != 0) else BITS_PER_BYTE
         data = bin(byte)[2:].zfill(fill)
         for bit in data:
             out.append(0 if bit == '0' else 1) # note that all bits go to 1 if we just append bit, since it's a non-null string
@@ -351,4 +351,10 @@ if __name__ == "__main__":
     print(f'Corrupted: {str(data_with_parity):>{padding}}')
     print(f'Decoded:   {str(decode(data_with_parity)):>{padding}}')
     print(f"Hamming Distance is {calculate_hamming_distance()}")
-    test_hamming_decode(6)
+    for i in range(1, 12):
+        try:
+            print(f"Testing decode with {i} data bits...", end='')
+            test_hamming_decode(i)
+            print("success!")
+        except AssertionError as e:
+            print(f"Failed on case {i} data bits: {e}")
