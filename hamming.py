@@ -14,7 +14,7 @@ from bitarray import bitarray
 from math import floor, ceil, log2
 
 DEBUG = False
-BITS_PER_BYTE =8 
+BITS_PER_BYTE = 8 
 
 # CORE API
 
@@ -207,8 +207,10 @@ def bytes_to_bits(byte_stream: bytearray, nzfill=BITS_PER_BYTE):
     if(DEBUG):
         print(f"\tfunc({bytes_to_bits.__name__}{byte_stream=}")
     out = bitarray()
-    for byte in byte_stream:
-        data = bin(byte)[2:].zfill(nzfill)
+    for byte_idx in range(len(byte_stream)):
+        byte = byte_stream[byte_idx]
+        fill = nzfill % BITS_PER_BYTE if byte_idx == 0 else BITS_PER_BYTE
+        data = bin(byte)[2:].zfill(fill)
         for bit in data:
             out.append(0 if bit == '0' else 1) # note that all bits go to 1 if we just append bit, since it's a non-null string
     if(DEBUG):
@@ -242,8 +244,11 @@ def bits_to_bytes(bits: bitarray):
 
 def _get_codewords(num_data_bits):
     codewords = []
-    for i in range(num_data_bits**2):
-        data = bytes_to_bits(i.to_bytes(), num_data_bits)
+    num_bytes = num_data_bits // BITS_PER_BYTE
+    if(num_data_bits % BITS_PER_BYTE != 0):
+        num_bytes += 1
+    for i in range(2**num_data_bits):
+        data = bytes_to_bits(i.to_bytes(num_bytes), num_data_bits)
         data_w_parity = encode(data.copy())
         if(DEBUG):
             print(f"\tfunc({_get_codewords.__name__}): {data=} : {data_w_parity=}")
@@ -262,37 +267,64 @@ the three states above.
 """
 def test_hamming_decode(num_data_bits=4):
     codewords = _get_codewords(num_data_bits)
+    zero_errors = [0] * (2**num_data_bits)
+    one_errors = [0] * (2**num_data_bits)
     num_zero_errors = 0
     num_one_errors = 0
+    num_val_errors = 0
+    num_index_errors = 0
     num_bits = len(codewords[0])
+    num_bytes = num_bits // BITS_PER_BYTE
+    if(num_bits % BITS_PER_BYTE != 0):
+        num_bytes += 1
     for i in range(2**num_bits):
-        message = bytes_to_bits(i.to_bytes(), num_bits)
+        message = bytes_to_bits(i.to_bytes(num_bytes), num_bits)
         try:
             decoded = decode(message.copy())
+            decoded_int = int.from_bytes(bits_to_bytes(decoded.copy()), byteorder='big')
             encoded_bytes = bits_to_bytes(encode(decoded))
             message_bytes = bits_to_bytes(message)
             if(DEBUG):
                 print(f"\tfunc({test_hamming_decode.__name__}): decoded: {encoded_bytes}, message: {message_bytes}", end='')
             if(encoded_bytes != message_bytes):
+                one_errors[decoded_int] += 1
                 num_one_errors += 1
                 if(DEBUG):
+                    print(f"{decoded} {encode(decoded)}, {message}")
                     print(', one error')
             else:
                 num_zero_errors += 1
+                zero_errors[decoded_int] += 1
                 if(DEBUG):
                     print(', zero error')
             if(DEBUG):
                 print(f"\tfunc({test_hamming_decode.__name__}): {message}: {decoded}")
         except ValueError:
+            num_val_errors += 1
             if(DEBUG):
                 print(f"\tfunc({test_hamming_decode.__name__}): {message}: ValueError")
         except IndexError as e:
+            num_index_errors += 1
             if(DEBUG):
-                print(f"\tfunc({test_hamming_decode.__name__}): {message}: IndexError {e}")
-    assert num_zero_errors == num_data_bits**2
-    assert num_one_errors == (num_bits * (2**num_data_bits))
+                print(f"index error {decoded} {encode(decoded)}, {message}")
+                print(f"\tfunc({test_hamming_decode.__name__}): {message}: IndexError {e}")    
     if(DEBUG):
-        print(f"\tfunc{test_hamming_decode.__name__}): {num_zero_errors=}, {num_one_errors=}")
+        print(f"\tfunc({test_hamming_decode.__name__}): {num_bits=}, {num_data_bits=}")
+        print(f"\tfunc({test_hamming_decode.__name__}): {num_zero_errors=}, {num_one_errors=}, {num_two_errors=}")
+        print(f"{num_zero_errors=}")
+        print(f"{num_one_errors=}")
+        print(f"{num_val_errors=}")
+        print(f"{num_index_errors=}")
+        print(f"{one_errors=}")
+        print(f"{zero_errors=}")
+        print(f"{num_bits=}, {num_data_bits=}")
+    for val in one_errors:
+        assert val == num_bits
+    for val in zero_errors:
+        assert val == 1
+    assert num_zero_errors == 2**num_data_bits
+    assert num_one_errors == (num_bits * (2**num_data_bits))
+    assert (num_val_errors + num_index_errors) == (2**num_bits - num_zero_errors - num_one_errors)
 
 def calculate_hamming_distance(num_data_bits=4):
     codewords = _get_codewords(num_data_bits)
@@ -319,4 +351,4 @@ if __name__ == "__main__":
     print(f'Corrupted: {str(data_with_parity):>{padding}}')
     print(f'Decoded:   {str(decode(data_with_parity)):>{padding}}')
     print(f"Hamming Distance is {calculate_hamming_distance()}")
-    test_hamming_decode()
+    test_hamming_decode(6)
